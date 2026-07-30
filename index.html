@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>WAYPMA · и точка</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="header-content">
+            <h1>🥙 <span class="neon-text">WAYPMA</span> <span class="dot">-</span> и точка</h1>
+            <p class="slogan">Best in <span class="vice-city">Vice City</span></p>
+            <p class="address">📍 ул. Большевистская, 151</p>
+            <p class="work-hours">🕐 11:00 – 22:00</p>
+        </div>
+    </header>
+
+    <div class="banner-container" id="bannerContainer">
+        <img src="images/menu-banner.jpg" alt="Наше меню" class="menu-banner" id="menuBanner" />
+        <div class="banner-overlay">
+            <span class="banner-text">🔥 ВСЁ МЕНЮ</span>
+        </div>
+    </div>
+
+    <nav class="category-grid" id="categoryGrid">
+        <button class="category-btn active" data-category="shawarma">
+            <span class="category-icon">💜</span>
+            <span class="category-label">Шаурма</span>
+        </button>
+        <button class="category-btn" data-category="salads">
+            <span class="category-icon"></span>
+            <span class="category-label">Салаты</span>
+        </button>
+        <button class="category-btn" data-category="snacks">
+            <span class="category-icon"></span>
+            <span class="category-label">Закуски</span>
+        </button>
+        <button class="category-btn" data-category="drinks">
+            <span class="category-icon"></span>
+            <span class="category-label">Напитки</span>
+        </button>
+    </nav>
+
+    <div class="product-list" id="productList"></div>
+
+    <div class="cart-bar" id="cartBar">
+        <button class="cart-button" id="cartButton">
+            🛒 Корзина
+            <span class="cart-count" id="cartCount">0</span>
+        </button>
+    </div>
+
+    <div class="modal-overlay" id="productModal">
+        <div class="modal-content" id="modalContent"></div>
+    </div>
+
+    <script src="menu-data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
