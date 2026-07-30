@@ -794,6 +794,7 @@ function checkout() {
 }
 
 function sendOrderToBot(orderText) {
+    alert('✅ Функция sendOrderToBot вызвана!');
     if (window.Telegram && Telegram.WebApp) {
         Telegram.WebApp.sendData(JSON.stringify({
             type: 'order',
