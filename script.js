@@ -10,12 +10,21 @@ let selectedRemoved = [];
 let selectedExtras = [];
 let editingCartIndex = null;
 let userOrders = [];
+let currentUserId = null;
 
+// ===== ЗАГРУЗКА СОХРАНЁННЫХ ДАННЫХ =====
 document.addEventListener('DOMContentLoaded', function() {
     if (window.Telegram && Telegram.WebApp) {
         Telegram.WebApp.ready();
-        console.log('✅ Mini App готов');
+        const user = Telegram.WebApp.initDataUnsafe?.user;
+        if (user) {
+            currentUserId = user.id;
+            console.log('👤 Пользователь:', user.first_name, 'ID:', currentUserId);
+        }
     }
+
+    loadOrdersFromStorage();
+    loadCartFromStorage();
 
     renderProducts('shawarma');
 
@@ -38,6 +47,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     addOrderHistoryButton();
 });
+
+// ===== РАБОТА С LOCALSTORAGE =====
+function saveCartToStorage() {
+    try {
+        localStorage.setItem('shaurma_cart', JSON.stringify(cart));
+    } catch (e) {
+        console.log('Не удалось сохранить корзину');
+    }
+}
+
+function loadCartFromStorage() {
+    try {
+        const saved = localStorage.getItem('shaurma_cart');
+        if (saved) {
+            cart = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.log('Не удалось загрузить корзину');
+    }
+}
+
+function saveOrdersToStorage() {
+    try {
+        localStorage.setItem('shaurma_orders', JSON.stringify(userOrders));
+    } catch (e) {
+        console.log('Не удалось сохранить заказы');
+    }
+}
+
+function loadOrdersFromStorage() {
+    try {
+        const saved = localStorage.getItem('shaurma_orders');
+        if (saved) {
+            userOrders = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.log('Не удалось загрузить заказы');
+    }
+}
 
 // ===== ОТРИСОВКА ТОВАРОВ =====
 function renderProducts(category) {
@@ -69,8 +117,10 @@ function renderProducts(category) {
         const inStock = product.in_stock !== false;
         const isDrink = product.is_drink === true;
 
-        const cartItem = cart.find(item => item.id === product.id && !item.size);
-        const qty = cartItem ? cartItem.qty : 0;
+        // Общее количество товара в корзине (по id)
+        const totalQty = cart
+            .filter(item => item.id === product.id)
+            .reduce((sum, item) => sum + item.qty, 0);
 
         let buttonHtml = '';
         if (!inStock) {
@@ -80,11 +130,11 @@ function renderProducts(category) {
                 </div>
             `;
         } else if (isDrink) {
-            if (qty > 0) {
+            if (totalQty > 0) {
                 buttonHtml = `
                     <div class="qty-control">
                         <button class="qty-btn" onclick="event.stopPropagation(); changeDrinkQty(${product.id}, -1)">−</button>
-                        <span>${qty}</span>
+                        <span>${totalQty}</span>
                         <button class="qty-btn" onclick="event.stopPropagation(); changeDrinkQty(${product.id}, 1)">+</button>
                     </div>
                 `;
@@ -93,11 +143,11 @@ function renderProducts(category) {
                     <button class="add-btn" onclick="event.stopPropagation(); addDrink(${product.id})">+ Добавить</button>
                 `;
             }
-        } else if (qty > 0) {
+        } else if (totalQty > 0) {
             buttonHtml = `
                 <div class="qty-control">
                     <button class="qty-btn" onclick="event.stopPropagation(); changeQtyFromCard(${product.id}, -1)">−</button>
-                    <span>${qty}</span>
+                    <span>${totalQty}</span>
                     <button class="qty-btn" onclick="event.stopPropagation(); openProduct(${product.id})">+</button>
                 </div>
             `;
@@ -148,6 +198,7 @@ function addDrink(productId) {
             img: product.img || '🥙'
         });
     }
+    saveCartToStorage();
     renderProducts(currentCategory);
     updateCartBadge();
 }
@@ -160,6 +211,7 @@ function changeDrinkQty(productId, delta) {
             cart = cart.filter(item => !(item.id === productId && !item.size));
         }
     }
+    saveCartToStorage();
     renderProducts(currentCategory);
     updateCartBadge();
 }
@@ -168,13 +220,18 @@ function changeQtyFromCard(productId, delta) {
     const product = findProduct(productId);
     if (!product) return;
 
-    const existing = cart.find(item => item.id === productId && !item.size);
-    if (existing) {
-        existing.qty += delta;
-        if (existing.qty <= 0) {
-            cart = cart.filter(item => !(item.id === productId && !item.size));
-        }
+    // Удаляем последний добавленный товар с этим id (если есть)
+    // Ищем товар с этим id
+    const items = cart.filter(item => item.id === productId);
+    if (items.length === 0) return;
+    
+    // Берем последний добавленный (или любой)
+    const target = items[items.length - 1];
+    target.qty += delta;
+    if (target.qty <= 0) {
+        cart = cart.filter(item => item !== target);
     }
+    saveCartToStorage();
     renderProducts(currentCategory);
     updateCartBadge();
 }
@@ -199,28 +256,22 @@ function getAvailableTimes() {
     const currentMinutes = novosibirskTime.getHours() * 60 + novosibirskTime.getMinutes();
     const availableTimes = [];
     
-    // Проверяем, рабочее ли сейчас время (11:00 - 22:00)
     const isWorkingTime = currentMinutes >= 11 * 60 && currentMinutes <= 22 * 60;
     
-    // Если НЕ рабочее время (22:00 - 11:00)
     if (!isWorkingTime) {
-        // Если сейчас 22:00 - 23:59 — показываем "завтра к:"
         if (currentMinutes >= 22 * 60) {
             availableTimes.push('завтра к:');
         }
-        // Если сейчас 00:00 - 10:59 — просто время без "завтра к"
         let timeMinutes = 11 * 60;
         while (timeMinutes <= 22 * 60) {
             const hours = Math.floor(timeMinutes / 60);
             const mins = timeMinutes % 60;
-            const prefix = currentMinutes >= 22 * 60 ? '' : '';
-            availableTimes.push(`${prefix}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
+            availableTimes.push(`${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
             timeMinutes += 15;
         }
         return availableTimes;
     }
     
-    // Если рабочее время (11:00 - 22:00)
     availableTimes.push('как можно скорее');
     let timeMinutes = 11 * 60;
     while (timeMinutes <= 22 * 60) {
@@ -240,15 +291,14 @@ function openProduct(productId, editIndex = null) {
     const product = findProduct(productId);
     if (!product) return;
 
-    // ДЛЯ НАПИТКОВ
     if (product.is_drink) {
         const modal = document.getElementById('productModal');
         const content = document.getElementById('modalContent');
         const inStock = product.in_stock !== false;
 
-        // Проверяем существующее количество в корзине
-        const existing = cart.find(item => item.id === productId && !item.size);
-        const currentQty = existing ? existing.qty : 0;
+        const totalQty = cart
+            .filter(item => item.id === productId)
+            .reduce((sum, item) => sum + item.qty, 0);
 
         let html = `
             <div class="modal-image">
@@ -272,7 +322,7 @@ function openProduct(productId, editIndex = null) {
             ${inStock ? `
                 <div style="display: flex; align-items: center; gap: 16px; justify-content: center; margin: 16px 0;">
                     <button class="qty-btn-modal" onclick="changeDrinkQtyInModal(-1)">−</button>
-                    <span style="font-size: 20px; font-weight: 700; min-width: 30px; text-align: center;" id="drinkModalQty">${currentQty}</span>
+                    <span style="font-size: 20px; font-weight: 700; min-width: 30px; text-align: center;" id="drinkModalQty">${totalQty}</span>
                     <button class="qty-btn-modal" onclick="changeDrinkQtyInModal(1)">+</button>
                 </div>
             ` : ''}
@@ -288,7 +338,6 @@ function openProduct(productId, editIndex = null) {
         return;
     }
 
-    // ДЛЯ ШАУРМЫ
     const inStock = product.in_stock !== false;
     
     selectedProduct = product;
@@ -297,7 +346,14 @@ function openProduct(productId, editIndex = null) {
     selectedExtras = [];
     editingCartIndex = editIndex;
 
-    if (editIndex !== null && cart[editIndex]) {
+    if (editIndex === null) {
+        const existingItem = cart.find(item => item.id === productId);
+        if (existingItem) {
+            selectedSize = existingItem.size || (product.has_sizes ? 'medium' : null);
+            selectedRemoved = existingItem.removed || [];
+            selectedExtras = existingItem.extras || [];
+        }
+    } else if (editIndex !== null && cart[editIndex]) {
         const item = cart[editIndex];
         selectedSize = item.size || (product.has_sizes ? 'medium' : null);
         selectedRemoved = item.removed || [];
@@ -306,6 +362,11 @@ function openProduct(productId, editIndex = null) {
 
     const modal = document.getElementById('productModal');
     const content = document.getElementById('modalContent');
+
+    // Общее количество товара в корзине (по id)
+    const currentQty = cart
+        .filter(item => item.id === product.id)
+        .reduce((sum, item) => sum + item.qty, 0);
 
     let html = `
         <div class="modal-image">
@@ -384,6 +445,9 @@ function openProduct(productId, editIndex = null) {
                     <input type="checkbox" value="халапеньо +20г" data-extra='{"name":"халапеньо +20г","price":40}' ${selectedExtras.includes('халапеньо +20г') ? 'checked' : ''} /> Халапеньо (+20г) <span style="color:#ff4081;">+40 ₽</span>
                 </label>
             </div>
+            <div style="text-align:center; padding:8px; background:rgba(213,0,176,0.1); border-radius:12px; margin-bottom:12px; color:#b39ddb; font-size:13px;">
+                🛒 В корзине: <span style="color:#ff4081; font-weight:700;" id="cartQtyDisplay">${currentQty}</span> шт.
+            </div>
         `;
     }
 
@@ -428,13 +492,10 @@ function addDrinkFromModal(productId) {
     const product = findProduct(productId);
     if (!product) return;
 
-    // Ищем существующий товар
     const existing = cart.find(item => item.id === productId && !item.size);
     if (existing) {
-        // Если есть — обновляем количество
         existing.qty = qty;
     } else {
-        // Если нет — добавляем новый
         cart.push({
             id: product.id,
             name: product.name,
@@ -448,6 +509,7 @@ function addDrinkFromModal(productId) {
         });
     }
 
+    saveCartToStorage();
     closeModal();
     renderProducts(currentCategory);
     updateCartBadge();
@@ -507,6 +569,7 @@ function addToCartFromModal() {
             removed: removed,
             extras: extras
         };
+        saveCartToStorage();
         closeModal();
         renderProducts(currentCategory);
         updateCartBadge();
@@ -537,9 +600,21 @@ function addToCartFromModal() {
         });
     }
 
+    saveCartToStorage();
     updateCartBadge();
     renderProducts(currentCategory);
     
+    // ✅ ОБНОВЛЯЕМ ТОЛЬКО ЦИФРУ В МОДАЛКЕ
+    const qtyDisplay = document.getElementById('cartQtyDisplay');
+    if (qtyDisplay) {
+        // Считаем ВСЕ позиции этого товара в корзине (по id)
+        const updatedQty = cart
+            .filter(item => item.id === selectedProduct.id)
+            .reduce((sum, item) => sum + item.qty, 0);
+        qtyDisplay.textContent = updatedQty;
+    }
+    
+    // Сбрасываем галочки
     document.querySelectorAll('.ingredients-remove input[type="checkbox"]').forEach(cb => {
         cb.checked = false;
     });
@@ -639,6 +714,7 @@ function changeQtyInCart(index, delta) {
         renderProducts(currentCategory);
         return;
     }
+    saveCartToStorage();
     openCart();
     updateCartBadge();
     renderProducts(currentCategory);
@@ -655,7 +731,7 @@ function checkout() {
     const time = document.getElementById('orderTime')?.value || 'как можно скорее';
     const payment = document.getElementById('paymentMethod')?.value || 'наличными при получении';
 
-    let orderText = '🆕 НОВЫЙ ЗАКАЗ!\n\n';
+    let orderText = '';
     let total = 0;
     cart.forEach(item => {
         const sum = item.price * item.qty;
@@ -667,14 +743,8 @@ function checkout() {
         if (details) orderText += ` (${details})`;
         orderText += '\n';
     });
-    orderText += `\n💰 Итого: ${total} ₽`;
-    orderText += `\n📍 Самовывоз: ул. Большевистская, 151`;
-    orderText += `\n💬 Комментарий: ${comment || 'нет'}`;
-    orderText += `\n🕐 Получение: ${time}`;
-    orderText += `\n💳 Оплата: ${payment}`;
 
-    const order = {
-        id: Date.now(),
+    const orderData = {
         items: [...cart],
         total: total,
         comment: comment,
@@ -682,11 +752,36 @@ function checkout() {
         payment: payment,
         date: new Date().toLocaleString()
     };
+    
+    const order = {
+        id: Date.now(),
+        ...orderData
+    };
     userOrders.push(order);
+    saveOrdersToStorage();
 
-    alert('✅ Заказ оформлен!\n\n' + orderText);
+    let botOrderText = `🆕 НОВЫЙ ЗАКАЗ!\n\n`;
+    cart.forEach(item => {
+        const sum = item.price * item.qty;
+        const removedText = item.removed.length > 0 ? `без: ${item.removed.join(', ')}` : '';
+        const extrasText = item.extras.length > 0 ? `доп: ${item.extras.join(', ')}` : '';
+        const details = [removedText, extrasText].filter(t => t).join(' | ');
+        botOrderText += `• ${item.name} ${item.size ? `(${item.size})` : ''} × ${item.qty} = ${sum} ₽`;
+        if (details) botOrderText += ` (${details})`;
+        botOrderText += '\n';
+    });
+    botOrderText += `\n💰 Итого: ${total} ₽`;
+    botOrderText += `\n📍 Самовывоз: ул. Большевистская, 151`;
+    botOrderText += `\n💬 Комментарий: ${comment || 'нет'}`;
+    botOrderText += `\n🕐 Получение: ${time}`;
+    botOrderText += `\n💳 Оплата: ${payment}`;
+
+    sendOrderToBot(botOrderText);
+
+    alert('✅ Заказ оформлен!\n\n' + botOrderText);
 
     cart = [];
+    saveCartToStorage();
     closeModal();
     updateCartBadge();
     renderProducts(currentCategory);
@@ -696,6 +791,18 @@ function checkout() {
             showOrderHistory();
         }
     }, 500);
+}
+
+function sendOrderToBot(orderText) {
+    if (window.Telegram && Telegram.WebApp) {
+        Telegram.WebApp.sendData(JSON.stringify({
+            type: 'order',
+            order: orderText
+        }));
+        console.log('📤 Заказ отправлен в бот');
+    } else {
+        console.log('⚠️ Telegram WebApp не найден, заказ не отправлен');
+    }
 }
 
 // ===== ИСТОРИЯ ЗАКАЗОВ =====
