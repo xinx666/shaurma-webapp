@@ -796,15 +796,24 @@ function checkout() {
 function sendOrderToBot(orderText) {
     alert('1️⃣ sendOrderToBot вызвана!');
     
+    // Показываем, что именно отправляем
+    const payload = JSON.stringify({
+        type: 'order',
+        order: orderText
+    });
+    alert('📦 Отправляемые данные: ' + payload);
+    
     if (window.Telegram && Telegram.WebApp) {
         alert('2️⃣ Telegram.WebApp найден!');
         try {
-            Telegram.WebApp.sendData(JSON.stringify({
-                type: 'order',
-                order: orderText
-            }));
-            alert('3️⃣ Данные успешно отправлены!');
+            Telegram.WebApp.sendData(payload);
+            alert('3️⃣ Данные успешно отправлены через sendData!');
             console.log('📤 Заказ отправлен в бот');
+            
+            // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: пробуем отправить через fetch (запасной вариант)
+            // Это отправит данные на ваш бот через HTTP-запрос (если у вас есть бэкенд)
+            // Но так как у вас бэкенд только бот, этот запрос никуда не уйдёт.
+            // Просто для проверки.
         } catch (e) {
             alert('4️⃣ Ошибка при отправке: ' + e.message);
         }
