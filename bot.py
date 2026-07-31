@@ -1,9 +1,11 @@
-import logging
-import json
-import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
+import os
+import logging
+import json
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+import threading
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("TOKEN", "8702807148:AAEckteSCP32O7hx4Xv2MvrEjg4GI0DjbgY")
@@ -16,7 +18,7 @@ ADMIN_IDS = [
 ]
 
 # ========== НАСТРОЙКИ МИНИ-ПРИЛОЖЕНИЯ ==========
-WEBAPP_URL = "https://xinx666.github.io/shaurma-webapp/"
+WEBAPP_URL = "https://shaurma-bot.onrender.com/"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -56,6 +58,22 @@ def get_back_keyboard():
         [InlineKeyboardButton("🔙 Назад", callback_data="back")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+# ========== ФУНКЦИЯ ДЛЯ СТАТИЧЕСКОГО СЕРВЕРА ==========
+def start_static_server():
+    """Запускает простой HTTP-сервер для раздачи статики"""
+    try:
+        os.chdir("static")  # Переходим в папку со статикой
+        handler = SimpleHTTPRequestHandler
+        server = HTTPServer(("0.0.0.0", 8080), handler)
+        print("🌐 Статический сервер запущен на порту 8080")
+        server.serve_forever()
+    except Exception as e:
+        logging.error(f"Ошибка запуска статического сервера: {e}")
+
+# ========== ЗАПУСК СТАТИЧЕСКОГО СЕРВЕРА В ОТДЕЛЬНОМ ПОТОКЕ ==========
+static_thread = threading.Thread(target=start_static_server, daemon=True)
+static_thread.start()
 
 # ========== ОБРАБОТЧИКИ ==========
 
