@@ -794,14 +794,14 @@ function checkout() {
 }
 
 function sendOrderToBot(orderText) {
-    // Формируем сообщение с заказом
-    const fullText = `🆕 ЗАКАЗ\n\n${orderText}`;
-    // Открываем Telegram с предзаполненным текстом
     if (window.Telegram && Telegram.WebApp) {
-        Telegram.WebApp.openTelegramLink(`https://t.me/ShawarmaTochkaBot?text=${encodeURIComponent(fullText)}`);
+        Telegram.WebApp.sendData(JSON.stringify({
+            type: 'order',
+            order: orderText
+        }));
+        console.log('📤 Заказ отправлен в бот');
     } else {
-        // Если не в Telegram, просто показываем alert
-        alert('Отправьте этот текст боту:\n\n' + fullText);
+        console.log('⚠️ Telegram WebApp не найден, заказ не отправлен');
     }
 }
 
