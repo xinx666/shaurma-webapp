@@ -18,7 +18,7 @@ ADMIN_IDS = [
 ]
 
 # ========== НАСТРОЙКИ МИНИ-ПРИЛОЖЕНИЯ ==========
-WEBAPP_URL = "https://shaurma-bot.onrender.com/"
+WEBAPP_URL = "https://shaurma-bot-4a6q.onrender.com/"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
