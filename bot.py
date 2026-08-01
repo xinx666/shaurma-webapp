@@ -221,11 +221,13 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ========== ОБРАБОТЧИК WEB APP DATA ==========
-@app.route('/webhook', methods=['POST'])
-async def webhook():
+@app.route('/webhook', methods=['GET', 'POST'])
+def webhook():
     """Обработчик обновлений от Telegram (Webhook)"""
+    if request.method == 'GET':
+        return "OK", 200  # Просто отвечаем на проверку
+    
     try:
-        # Получаем данные от Telegram
         data = request.get_json()
         if not data:
             return 'OK', 200
@@ -233,8 +235,8 @@ async def webhook():
         # Создаём объект Update
         update = Update.de_json(data, bot)
         
-        # Обрабатываем обновление через Application
-        await application.process_update(update)
+        # Обрабатываем обновление синхронно (без await)
+        application.process_update(update)
         
         return 'OK', 200
     except Exception as e:
