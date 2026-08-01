@@ -1,7 +1,6 @@
 import os
 import logging
 import json
-import asyncio
 from flask import Flask, request, jsonify, send_from_directory
 import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -233,18 +232,13 @@ def webhook():
         if not data:
             return "OK", 200
         
-        logger.info(f"📩 Получены данные от Telegram: {data}")
+        logger.info(f"📩 Получены данные от Telegram")
         
         # Создаём объект Update
         update = Update.de_json(data, bot)
         
-        # Инициализируем application, если ещё не инициализирован
-        if not hasattr(application, '_initialized'):
-            application.initialize()
-            application.start()
-        
-        # Запускаем обработку
-        asyncio.run(application.process_update(update))
+        # Обрабатываем обновление синхронно
+        application.process_update(update)
         
         return "OK", 200
     except Exception as e:
@@ -317,6 +311,11 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
+    # Инициализируем Application
+    application.initialize()
+    application.start()
+    logger.info("✅ Application инициализирован и запущен")
+    
     # Устанавливаем webhook
     webhook_url = f"{WEBAPP_URL}webhook"
     try:
