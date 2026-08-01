@@ -238,8 +238,12 @@ def webhook():
         # Создаём объект Update
         update = Update.de_json(data, bot)
         
-        # Запускаем обработку асинхронно в отдельном потоке
-        # Это правильный способ для Flask + async
+        # Инициализируем application, если ещё не инициализирован
+        if not hasattr(application, '_initialized'):
+            application.initialize()
+            application.start()
+        
+        # Запускаем обработку
         asyncio.run(application.process_update(update))
         
         return "OK", 200
@@ -316,7 +320,6 @@ if __name__ == '__main__':
     # Устанавливаем webhook
     webhook_url = f"{WEBAPP_URL}webhook"
     try:
-        # Правильный способ установки webhook
         bot.set_webhook(url=webhook_url)
         logger.info(f"✅ Webhook установлен: {webhook_url}")
     except Exception as e:
