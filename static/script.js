@@ -794,15 +794,30 @@ function checkout() {
 }
 
 function sendOrderToBot(orderText) {
-    if (window.Telegram && Telegram.WebApp) {
-        Telegram.WebApp.sendData(JSON.stringify({
-            type: 'order',
-            order: orderText
-        }));
-        console.log('📤 Заказ отправлен в бот');
-    } else {
-        console.log('⚠️ Telegram WebApp не найден, заказ не отправлен');
-    }
+    const payload = JSON.stringify({
+        type: 'order',
+        order: orderText,
+        user_id: currentUserId
+    });
+    
+    // Отправляем на наш сервер
+    fetch('/webapp_data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('✅ Заказ оформлен!');
+        } else {
+            alert('❌ Ошибка при оформлении заказа');
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        alert('❌ Ошибка при оформлении заказа');
+    });
 }
 
 // ===== ИСТОРИЯ ЗАКАЗОВ =====
