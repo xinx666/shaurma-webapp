@@ -2,8 +2,7 @@ import os
 import logging
 import json
 from flask import Flask, request, jsonify, send_from_directory
-import telegram
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("TOKEN", "8702807148:AAEckteSCP32O7hx4Xv2MvrEjg4GI0DjbgY")
@@ -21,7 +20,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='static', static_url_path='')
 
 # ========== ИНИЦИАЛИЗАЦИЯ TELEGRAM BOT ==========
-bot = telegram.Bot(token=TOKEN)
+# Используем синхронный Bot (без async)
+bot = Bot(token=TOKEN)
 
 # ========== ДАННЫЕ ==========
 CONTACTS = {
@@ -251,12 +251,10 @@ def process_update(update_data):
         
         # Обработка ручного ввода номера
         if update.message and update.message.text:
-            # Проверяем, что это похоже на номер телефона
             text = update.message.text.strip()
             if any(c.isdigit() for c in text) and len(''.join(filter(str.isdigit, text))) >= 10:
                 handle_manual_contact(update)
                 return
-            # Если это не номер — обрабатываем как неизвестное
             handle_unknown(update.effective_user.id, text)
             return
         
