@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='static', static_url_path='')
 
 # ========== СОЗДАЁМ СИНХРОННЫЙ BOT ==========
-# Используем HTTPXRequest с таймаутами
-request = HTTPXRequest(
+# ВАЖНО: называем переменную http_request, чтобы не конфликтовать с Flask
+http_request = HTTPXRequest(
     connect_timeout=30.0,
     read_timeout=30.0,
     write_timeout=30.0,
     pool_timeout=30.0
 )
-bot = Bot(token=TOKEN, request=request)
+bot = Bot(token=TOKEN, request=http_request)
 
 # ========== КЛАВИАТУРА ==========
 def get_menu_keyboard():
