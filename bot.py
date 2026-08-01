@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import asyncio
 from flask import Flask, request, jsonify, send_from_directory
 import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -220,35 +221,35 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_contact_keyboard()
         )
 
+# ========== ОБРАБОТЧИК WEBHOOK ==========
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     """Обработчик обновлений от Telegram (Webhook)"""
-    # Если это GET-запрос — просто отвечаем OK для проверок
     if request.method == 'GET':
         return "OK", 200
     
-    # Если это POST — обрабатываем данные
     try:
-        # Получаем данные от Telegram
         data = request.get_json()
         if not data:
             return "OK", 200
         
-        # Создаём объект Update и обрабатываем его
+        logger.info(f"📩 Получены данные от Telegram: {data}")
+        
+        # Создаём объект Update
         update = Update.de_json(data, bot)
         
-        # Важно! Запускаем обработку синхронно (без await)
-        application.process_update(update)
+        # Запускаем обработку асинхронно в отдельном потоке
+        # Это правильный способ для Flask + async
+        asyncio.run(application.process_update(update))
         
         return "OK", 200
     except Exception as e:
-        # Логируем ошибку
-        logger.error(f"Ошибка в webhook: {e}")
-        # И всё равно возвращаем 200, чтобы Telegram не пересылал заново
+        logger.error(f"❌ Ошибка в webhook: {e}")
         return "OK", 200
 
+# ========== ОБРАБОТЧИК WEB APP DATA ==========
 @app.route('/webapp_data', methods=['POST'])
-async def handle_webapp_data():
+def handle_webapp_data():
     """Обработчик данных из мини-приложения (заказы)"""
     try:
         data = request.get_json()
@@ -257,31 +258,16 @@ async def handle_webapp_data():
         
         logger.info(f"🔥🔥🔥 ПОЛУЧЕНЫ ДАННЫЕ ИЗ WEBAPP: {data}")
         
-        # Проверяем, что это заказ
         if data.get('type') == 'order':
             order_text = data.get('order', '')
-            
-            # Получаем информацию о пользователе (если передаётся)
             user_id = data.get('user_id')
-            user_info = user_contacts.get(user_id, {})
-            phone = user_info.get('phone', 'не указан')
-            name = user_info.get('first_name', 'Клиент')
-            
-            # Формируем сообщение для админов
-            full_order_text = (
-                f"🆕 **НОВЫЙ ЗАКАЗ!**\n\n"
-                f"👤 Клиент: {name}\n"
-                f"📱 Телефон: {phone}\n"
-                f"{'-' * 30}\n"
-                f"{order_text}"
-            )
             
             # Отправляем заказ админам
             for admin_id in ADMIN_IDS:
                 try:
-                    await bot.send_message(
+                    bot.send_message(
                         chat_id=admin_id,
-                        text=full_order_text,
+                        text=f"🆕 **НОВЫЙ ЗАКАЗ!**\n\n{order_text}",
                         parse_mode="Markdown"
                     )
                     logger.info(f"✅ Заказ отправлен админу {admin_id}")
@@ -289,14 +275,15 @@ async def handle_webapp_data():
                     logger.error(f"❌ Не удалось отправить заказ админу {admin_id}: {e}")
             
             # Отправляем подтверждение пользователю
-            try:
-                await bot.send_message(
-                    chat_id=user_id,
-                    text=f"✅ **Ваш заказ принят!**\n\n{order_text}\n\n📍 **Самовывоз:** ул. Большевистская, 151",
-                    parse_mode="Markdown"
-                )
-            except Exception as e:
-                logger.error(f"Не удалось отправить подтверждение пользователю: {e}")
+            if user_id:
+                try:
+                    bot.send_message(
+                        chat_id=user_id,
+                        text=f"✅ **Ваш заказ принят!**\n\n{order_text}\n\n📍 **Самовывоз:** ул. Большевистская, 151",
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    logger.error(f"Не удалось отправить подтверждение пользователю: {e}")
             
             return jsonify({'status': 'success'}), 200
         
@@ -308,12 +295,10 @@ async def handle_webapp_data():
 # ========== РАЗДАЧА СТАТИКИ ==========
 @app.route('/')
 def serve_index():
-    """Раздаёт index.html"""
     return send_from_directory('static', 'index.html')
 
 @app.route('/<path:path>')
 def serve_static(path):
-    """Раздаёт статические файлы"""
     return send_from_directory('static', path)
 
 # ========== РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ДЛЯ TELEGRAM ==========
@@ -330,9 +315,13 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_
 if __name__ == '__main__':
     # Устанавливаем webhook
     webhook_url = f"{WEBAPP_URL}webhook"
-    bot.set_webhook(url=webhook_url)
-    logger.info(f"Webhook установлен: {webhook_url}")
+    try:
+        # Правильный способ установки webhook
+        bot.set_webhook(url=webhook_url)
+        logger.info(f"✅ Webhook установлен: {webhook_url}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка установки webhook: {e}")
     
     # Запускаем Flask
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
