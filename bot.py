@@ -1,143 +1,307 @@
-import os
 import logging
 import json
-from flask import Flask, request, jsonify, send_from_directory
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
 # ========== НАСТРОЙКИ ==========
-TOKEN = os.environ.get("TOKEN", "8702807148:AAEckteSCP32O7hx4Xv2MvrEjg4GI0DjbgY")
-WEBAPP_URL = "https://shaurma-bot-4a6q.onrender.com/"
-ADMIN_IDS = [963903929, 1253085905]
+TOKEN = "8702807148:AAEckteSCP32O7hx4Xv2MvrEjg4GI0DjbgY"
+ADMIN_CHAT_ID = 963903929
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ========== НАСТРОЙКИ МИНИ-ПРИЛОЖЕНИЯ ==========
+WEBAPP_URL = "https://xinx666.github.io/shaurma-webapp/"
 
-# ========== FLASK ==========
-app = Flask(__name__, static_folder='static', static_url_path='')
+# ========== СПИСОК АДМИНОВ (получают заказы) ==========
+ADMIN_IDS = [
+    963903929,
+    1253085905,
+]
 
-# ========== СОЗДАЁМ СИНХРОННЫЙ BOT ==========
-# ВАЖНО: называем переменную http_request, чтобы не конфликтовать с Flask
-http_request = HTTPXRequest(
-    connect_timeout=30.0,
-    read_timeout=30.0,
-    write_timeout=30.0,
-    pool_timeout=30.0
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
-bot = Bot(token=TOKEN, request=http_request)
 
-# ========== КЛАВИАТУРА ==========
-def get_menu_keyboard():
+# ========== ДАННЫЕ ==========
+CONTACTS = {
+    "address": "📍 ул. Большевистская, д. 151",
+    "phone": "📞 +7 953 554 67 68",
+    "hours": "🕐 11:00 - 22:00"
+}
+
+YANDEX_URL = "https://eda.yandex.ru/novosibirsk/r/saurma_-_i_tocka"
+
+user_contacts = {}
+
+# ========== КЛАВИАТУРЫ ==========
+
+def get_main_keyboard():
     keyboard = [
-        [InlineKeyboardButton("📋 Меню и заказ", web_app={"url": WEBAPP_URL})],
-        [InlineKeyboardButton("📍 Контакты", callback_data="contacts")],
+        [InlineKeyboardButton("📋 Меню и заказ", callback_data="menu")],
+        [InlineKeyboardButton("📍 Контакты и адрес", callback_data="contacts")],
+        [InlineKeyboardButton("📱 Заказать в Яндекс Еда", url=YANDEX_URL)],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_contact_keyboard():
+    keyboard = [
+        [KeyboardButton("📞 Отправить мой контакт", request_contact=True)],
+        [KeyboardButton("✏️ Ввести номер вручную")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+def get_back_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад", callback_data="back")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 # ========== ОБРАБОТЧИКИ ==========
-def process_update(update_data):
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id
+    
+    logging.info(f"Пользователь {user_id} ({user.first_name}) запустил бота")
+    
+    if user_id in user_contacts:
+        await update.message.reply_text(
+            f"🥙 С возвращением, {user.first_name}!",
+            reply_markup=get_main_keyboard()
+        )
+        return
+    
+    await update.message.reply_text(
+        f"🥙 Здравствуйте, {user.first_name}!\n\n"
+        "Добро пожаловать в 'Шаурма - и точка'! 🎉\n\n"
+        "📱 **Для оформления заказа нам нужен ваш номер телефона.**\n\n"
+        "Вы можете:\n"
+        "• Нажать кнопку «Отправить мой контакт» — номер отправится автоматически\n"
+        "• Или нажать «Ввести номер вручную» и написать его сами\n\n"
+        "Ваши данные в безопасности 🔒",
+        parse_mode="Markdown"
+    )
+    
+    await update.message.reply_text(
+        "📞 **Как хотите отправить контакт?**",
+        reply_markup=get_contact_keyboard(),
+        parse_mode="Markdown"
+    )
+
+async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    contact = update.message.contact
+    user = update.effective_user
+    user_id = user.id
+    
+    logging.info(f"Получен контакт от {user_id}: {contact.phone_number}")
+    
+    user_contacts[user_id] = {
+        'phone': contact.phone_number,
+        'first_name': contact.first_name,
+        'last_name': contact.last_name or '',
+        'user_id': user_id,
+        'username': user.username or ''
+    }
+    
+    await update.message.reply_text(
+        f"✅ Спасибо, {contact.first_name}!\n"
+        f"Ваш номер **{contact.phone_number}** сохранен.",
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode="Markdown"
+    )
+    
     try:
-        update = Update.de_json(update_data, bot)
-        
-        # Если это команда /start
-        if update.message and update.message.text and update.message.text.startswith('/start'):
-            user_id = update.effective_user.id
-            logger.info(f"✅ Обрабатываю /start для {user_id}")
-            
-            # Синхронная отправка сообщения
-            bot.send_message(
-                chat_id=user_id,
-                text="🥙 Добро пожаловать! Бот работает!",
-                reply_markup=get_menu_keyboard()
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=(
+                f"📞 **Новый контакт!**\n\n"
+                f"👤 Имя: {contact.first_name} {contact.last_name or ''}\n"
+                f"📱 Телефон: {contact.phone_number}\n"
+                f"🆔 ID: {user_id}\n"
+                f"👤 Username: @{user.username or 'не указан'}"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление админу: {e}")
+    
+    await show_main_menu(update, context)
+
+async def manual_contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id
+    phone = update.message.text.strip()
+    
+    digits = ''.join(filter(str.isdigit, phone))
+    
+    if len(digits) < 10:
+        await update.message.reply_text(
+            "❌ Пожалуйста, введите корректный номер телефона.\n"
+            "Пример: +7 953 554 67 68 или 89535546768\n\n"
+            "Попробуйте снова:",
+            reply_markup=get_contact_keyboard()
+        )
+        return
+    
+    logging.info(f"Ручной ввод контакта от {user_id}: {phone}")
+    
+    user_contacts[user_id] = {
+        'phone': phone,
+        'first_name': user.first_name or 'Клиент',
+        'last_name': user.last_name or '',
+        'user_id': user_id,
+        'username': user.username or ''
+    }
+    
+    await update.message.reply_text(
+        f"✅ Спасибо! Ваш номер **{phone}** сохранен.",
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode="Markdown"
+    )
+    
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=(
+                f"📞 **Новый контакт (вручную)!**\n\n"
+                f"👤 Имя: {user.first_name} {user.last_name or ''}\n"
+                f"📱 Телефон: {phone}\n"
+                f"🆔 ID: {user_id}\n"
+                f"👤 Username: @{user.username or 'не указан'}"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление админу: {e}")
+    
+    await show_main_menu(update, context)
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🥙 **Добро пожаловать в 'Шаурма - и точка'!**\n\n"
+        "👇 Выберите действие:",
+        reply_markup=get_main_keyboard(),
+        parse_mode="Markdown"
+    )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    data = query.data
+    
+    if data == "menu":
+        if user_id not in user_contacts:
+            await query.edit_message_text(
+                "⚠️ Для заказа нам нужен ваш контакт.\n\n"
+                "Пожалуйста, нажмите /start и поделитесь контактом.",
+                reply_markup=get_back_keyboard()
             )
             return
         
-        # Если это нажатие на кнопку
-        if update.callback_query:
-            query = update.callback_query
-            user_id = query.from_user.id
-            
-            if query.data == "contacts":
-                bot.send_message(
-                    chat_id=user_id,
-                    text="📍 ул. Большевистская, 151\n📞 +7 953 554 67 68"
-                )
-            return
-        
-        logger.info(f"⚠️ Неизвестное обновление: {update}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-
-# ========== МАРШРУТЫ ==========
-@app.route('/webhook', methods=['GET', 'POST'])
-def webhook():
-    if request.method == 'GET':
-        return "OK", 200
+        await query.edit_message_text(
+            "🥙 Нажмите кнопку ниже, чтобы открыть наше меню!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    text="🍔 Открыть меню",
+                    web_app={"url": WEBAPP_URL}
+                )],
+                [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+            ])
+        )
     
-    try:
-        data = request.get_json()
-        if data:
-            logger.info("📩 Получены данные")
-            process_update(data)
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"❌ Ошибка в webhook: {e}")
-        return "OK", 200
+    elif data == "contacts":
+        await query.edit_message_text(
+            f"📍 **Наш адрес**\n\n"
+            f"{CONTACTS['address']}\n"
+            f"{CONTACTS['phone']}\n"
+            f"{CONTACTS['hours']}",
+            reply_markup=get_back_keyboard(),
+            parse_mode="Markdown"
+        )
+    
+    elif data == "back":
+        await query.edit_message_text(
+            "🥙 Выберите действие:",
+            reply_markup=get_main_keyboard()
+        )
 
-@app.route('/webapp_data', methods=['POST'])
-def handle_webapp_data():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'status': 'error'}), 400
-        
-        logger.info(f"🔥 ПОЛУЧЕН ЗАКАЗ: {data}")
-        
-        if data.get('type') == 'order':
-            order_text = data.get('order', '')
-            user_id = data.get('user_id')
-            
-            # Отправляем админам
-            for admin_id in ADMIN_IDS:
-                try:
-                    bot.send_message(
-                        chat_id=admin_id,
-                        text=f"🆕 НОВЫЙ ЗАКАЗ!\n\n{order_text}"
-                    )
-                except Exception as e:
-                    logger.error(f"Ошибка отправки админу {admin_id}: {e}")
-            
-            # Подтверждение пользователю
-            if user_id:
-                bot.send_message(
-                    chat_id=user_id,
-                    text=f"✅ Заказ принят!\n\n{order_text}"
+async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # ===== ОБРАБОТКА ЗАКАЗОВ ИЗ ТЕКСТОВЫХ СООБЩЕНИЙ =====
+    if text and text.startswith("🆕 ЗАКАЗ"):
+        order_text = text.replace("🆕 ЗАКАЗ\n\n", "")
+        # Отправляем подтверждение пользователю
+        await update.message.reply_text(
+            f"✅ Ваш заказ принят!\n\n{order_text}\n\n📍 Самовывоз: ул. Большевистская, 151\n🕐 Мы ждём вас к указанному времени!"
+        )
+        # Отправляем админам
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🆕 **НОВЫЙ ЗАКАЗ!**\n\n{order_text}",
+                    parse_mode="Markdown"
                 )
-            
-            return jsonify({'status': 'success'}), 200
-        
-        return jsonify({'status': 'error'}), 400
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        return jsonify({'status': 'error'}), 500
-
-@app.route('/')
-def serve_index():
-    return send_from_directory('static', 'index.html')
-
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('static', path)
+                logging.info(f"Заказ отправлен админу {admin_id}")
+            except Exception as e:
+                logging.error(f"Не удалось отправить заказ админу {admin_id}: {e}")
+        return
+    
+    if text == "✏️ Ввести номер вручную":
+        await update.message.reply_text(
+            "📱 Введите ваш номер телефона:\n"
+            "Пример: +7 953 554 67 68 или 89535546768",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+    
+    if user_id in user_contacts:
+        await update.message.reply_text(
+            "😕 Я не понимаю это сообщение.\n\n"
+            "Пожалуйста, воспользуйтесь кнопками:",
+            reply_markup=get_main_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "😕 Я не понимаю это сообщение.\n\n"
+            "Пожалуйста, отправьте контакт:",
+            reply_markup=get_contact_keyboard()
+        )
 
 # ========== ЗАПУСК ==========
-if __name__ == '__main__':
-    # Устанавливаем webhook синхронно
-    webhook_url = f"{WEBAPP_URL}webhook"
-    try:
-        bot.set_webhook(url=webhook_url)
-        logger.info(f"✅ Webhook установлен: {webhook_url}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка установки webhook: {e}")
+
+def main():
+    request = HTTPXRequest(
+        connect_timeout=60.0,
+        read_timeout=60.0,
+        write_timeout=60.0,
+        pool_timeout=60.0
+    )
     
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    app = Application.builder().token(TOKEN).request(request).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app.add_handler(MessageHandler(
+        filters.Regex(r'^[\d\s\+\-\(\)]+$') & ~filters.COMMAND, 
+        manual_contact_handler
+    ))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
+    
+    print("=" * 50)
+    print("🤖 Бот 'Шаурма - и точка' запущен!")
+    print("📱 Откройте бота: https://t.me/ShawarmaTochkaBot")
+    print("🍔 Мини-приложение: " + WEBAPP_URL)
+    print("📋 Админы: " + ", ".join(str(a) for a in ADMIN_IDS))
+    print("⏹️ Для остановки нажмите Ctrl+C")
+    print("=" * 50)
+    
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
