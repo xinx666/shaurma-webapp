@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import asyncio
 from flask import Flask, request, jsonify, send_from_directory
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -15,6 +16,24 @@ logger = logging.getLogger(__name__)
 # ========== FLASK ==========
 app = Flask(__name__, static_folder='static', static_url_path='')
 bot = Bot(token=TOKEN)
+
+# ========== СИНХРОННАЯ ОБЁРТКА ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ==========
+def send_message_sync(chat_id, text, reply_markup=None, parse_mode=None):
+    """Синхронная обёртка для bot.send_message"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+        )
+        loop.close()
+    except Exception as e:
+        logger.error(f"Ошибка отправки сообщения: {e}")
 
 # ========== КЛАВИАТУРА ==========
 def get_menu_keyboard():
@@ -34,7 +53,7 @@ def process_update(update_data):
             user_id = update.effective_user.id
             logger.info(f"✅ Обрабатываю /start для {user_id}")
             
-            bot.send_message(
+            send_message_sync(
                 chat_id=user_id,
                 text="🥙 Добро пожаловать! Бот работает!",
                 reply_markup=get_menu_keyboard()
@@ -47,7 +66,7 @@ def process_update(update_data):
             user_id = query.from_user.id
             
             if query.data == "contacts":
-                bot.send_message(
+                send_message_sync(
                     chat_id=user_id,
                     text="📍 ул. Большевистская, 151\n📞 +7 953 554 67 68"
                 )
@@ -89,7 +108,7 @@ def handle_webapp_data():
             # Отправляем админам
             for admin_id in ADMIN_IDS:
                 try:
-                    bot.send_message(
+                    send_message_sync(
                         chat_id=admin_id,
                         text=f"🆕 НОВЫЙ ЗАКАЗ!\n\n{order_text}"
                     )
@@ -98,7 +117,7 @@ def handle_webapp_data():
             
             # Подтверждение пользователю
             if user_id:
-                bot.send_message(
+                send_message_sync(
                     chat_id=user_id,
                     text=f"✅ Заказ принят!\n\n{order_text}"
                 )
@@ -122,7 +141,11 @@ def serve_static(path):
 if __name__ == '__main__':
     webhook_url = f"{WEBAPP_URL}webhook"
     try:
-        bot.set_webhook(url=webhook_url)
+        # Устанавливаем webhook синхронно
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot.set_webhook(url=webhook_url))
+        loop.close()
         logger.info(f"✅ Webhook установлен: {webhook_url}")
     except Exception as e:
         logger.error(f"❌ Ошибка установки webhook: {e}")
