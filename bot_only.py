@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import threading
 from flask import Flask, request, jsonify, send_from_directory
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, Bot
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -28,7 +29,6 @@ def handle_webapp_data():
         user_id = data.get('user_id')
         
         logger.info(f"🔥 ПОЛУЧЕН ЗАКАЗ: {order_text}")
-        logger.info(f"👤 Пользователь ID: {user_id}")
         
         bot = Bot(token=TOKEN)
         
@@ -244,8 +244,43 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_contact_keyboard()
         )
 
+# ========== ЗАПУСК БОТА В ОТДЕЛЬНОМ ПОТОКЕ ==========
+def run_bot():
+    """Запускает бота в отдельном потоке"""
+    request = HTTPXRequest(
+        connect_timeout=60.0,
+        read_timeout=60.0,
+        write_timeout=60.0,
+        pool_timeout=60.0
+    )
+    
+    app_bot = Application.builder().token(TOKEN).request(request).build()
+    
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CallbackQueryHandler(button_handler))
+    app_bot.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app_bot.add_handler(MessageHandler(
+        filters.Regex(r'^[\d\s\+\-\(\)]+$') & ~filters.COMMAND, 
+        manual_contact_handler
+    ))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
+    
+    print("=" * 50)
+    print("🤖 Бот 'Шаурма - и точка' запущен!")
+    print("📱 Откройте бота: https://t.me/ShawarmaTochkaBot")
+    print("📋 Админы: " + ", ".join(str(a) for a in ADMIN_IDS))
+    print("⏹️ Для остановки нажмите Ctrl+C")
+    print("=" * 50)
+    
+    app_bot.run_polling()
+
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    # Запускаем Flask на порту Render
+    # Запускаем бота в отдельном потоке
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    logger.info("🤖 Бот запущен в отдельном потоке")
+    
+    # Запускаем Flask (веб-сервер)
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
