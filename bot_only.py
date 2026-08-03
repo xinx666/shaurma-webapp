@@ -1,8 +1,8 @@
 import logging
 import os
 import threading
-from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from flask import Flask, request, jsonify
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, Bot
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
@@ -19,6 +19,49 @@ app = Flask(__name__)
 @app.route('/')
 def health_check():
     return "OK", 200
+
+# ========== ОБРАБОТЧИК ЗАКАЗОВ ИЗ МИНИ-ПРИЛОЖЕНИЯ ==========
+@app.route('/webapp_data', methods=['POST'])
+def handle_webapp_data():
+    try:
+        data = request.get_json()
+        if not data or data.get('type') != 'order':
+            return jsonify({'status': 'error', 'message': 'Invalid data'}), 400
+        
+        order_text = data.get('order', '')
+        user_id = data.get('user_id')
+        
+        logger.info(f"🔥 ПОЛУЧЕН ЗАКАЗ: {order_text}")
+        
+        # Создаём объект Bot для отправки сообщений
+        bot = Bot(token=TOKEN)
+        
+        # Отправляем заказ админам
+        for admin_id in ADMIN_IDS:
+            try:
+                bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🆕 НОВЫЙ ЗАКАЗ!\n\n{order_text}"
+                )
+                logger.info(f"✅ Заказ отправлен админу {admin_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки админу {admin_id}: {e}")
+        
+        # Подтверждение пользователю
+        if user_id:
+            try:
+                bot.send_message(
+                    chat_id=user_id,
+                    text=f"✅ Ваш заказ принят!\n\n{order_text}"
+                )
+                logger.info(f"✅ Подтверждение отправлено пользователю {user_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки пользователю: {e}")
+        
+        return jsonify({'status': 'success'}), 200
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 def run_http_server():
     port = int(os.environ.get('PORT', 10000))
