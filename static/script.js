@@ -794,12 +794,30 @@ function checkout() {
 }
 
 function sendOrderToBot(orderText) {
-    const fullText = `🆕 ЗАКАЗ\n\n${orderText}`;
-    if (window.Telegram && Telegram.WebApp) {
-        Telegram.WebApp.openTelegramLink(`https://t.me/ShawarmaTochkaBot?text=${encodeURIComponent(fullText)}`);
-    } else {
-        alert('Отправьте этот текст боту:\n\n' + fullText);
-    }
+    const payload = JSON.stringify({
+        type: 'order',
+        order: orderText,
+        user_id: currentUserId
+    });
+    
+    // Отправляем заказ на бота
+    fetch('https://shaurma-bott.onrender.com/webapp_data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('✅ Заказ оформлен!');
+        } else {
+            alert('❌ Ошибка при оформлении заказа');
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        alert('❌ Ошибка при оформлении заказа');
+    });
 }
 
 // ===== ИСТОРИЯ ЗАКАЗОВ =====

@@ -1,7 +1,7 @@
 import logging
 import os
-import threading
-from flask import Flask, request, jsonify
+import json
+from flask import Flask, request, jsonify, send_from_directory
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, Bot
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
@@ -13,14 +13,10 @@ ADMIN_IDS = [963903929, 1253085905]
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== ФАЛЬШИВЫЙ HTTP-СЕРВЕР ДЛЯ RENDER ==========
-app = Flask(__name__)
+# ========== FLASK ==========
+app = Flask(__name__, static_folder='static', static_url_path='')
 
-@app.route('/')
-def health_check():
-    return "OK", 200
-
-# ========== ОБРАБОТЧИК ЗАКАЗОВ ИЗ МИНИ-ПРИЛОЖЕНИЯ ==========
+# ========== ОБРАБОТЧИК WEB APP DATA ==========
 @app.route('/webapp_data', methods=['POST'])
 def handle_webapp_data():
     try:
@@ -32,8 +28,8 @@ def handle_webapp_data():
         user_id = data.get('user_id')
         
         logger.info(f"🔥 ПОЛУЧЕН ЗАКАЗ: {order_text}")
+        logger.info(f"👤 Пользователь ID: {user_id}")
         
-        # Создаём объект Bot для отправки сообщений
         bot = Bot(token=TOKEN)
         
         # Отправляем заказ админам
@@ -63,9 +59,14 @@ def handle_webapp_data():
         logger.error(f"❌ Ошибка: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-def run_http_server():
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+# ========== РАЗДАЧА СТАТИКИ ==========
+@app.route('/')
+def serve_index():
+    return send_from_directory('static', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
 
 # ========== ДАННЫЕ ==========
 CONTACTS = {
@@ -138,6 +139,7 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'phone': contact.phone_number,
         'first_name': contact.first_name,
         'last_name': contact.last_name or '',
+        'username': user.username or ''
     }
     
     await update.message.reply_text(
@@ -146,16 +148,6 @@ async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
-    
-    for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"📞 **Новый контакт!**\n👤 {contact.first_name}\n📱 {contact.phone_number}",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            logger.error(f"Не удалось отправить уведомление админу: {e}")
     
     await show_main_menu(update, context)
 
@@ -175,6 +167,8 @@ async def manual_contact_handler(update: Update, context: ContextTypes.DEFAULT_T
     user_contacts[user_id] = {
         'phone': phone,
         'first_name': user.first_name or 'Клиент',
+        'last_name': user.last_name or '',
+        'username': user.username or ''
     }
     
     await update.message.reply_text(
@@ -182,16 +176,6 @@ async def manual_contact_handler(update: Update, context: ContextTypes.DEFAULT_T
         reply_markup=ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
-    
-    for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                chat_id=admin_id,
-                text=f"📞 **Новый контакт (вручную)!**\n👤 {user.first_name}\n📱 {phone}",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            logger.error(f"Не удалось отправить уведомление админу: {e}")
     
     await show_main_menu(update, context)
 
@@ -261,39 +245,7 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ========== ЗАПУСК ==========
-def main():
-    # Запускаем фальшивый HTTP-сервер в отдельном потоке
-    http_thread = threading.Thread(target=run_http_server, daemon=True)
-    http_thread.start()
-    logger.info("🌐 Фальшивый HTTP-сервер запущен для Render")
-
-    # Запускаем бота
-    request = HTTPXRequest(
-        connect_timeout=60.0,
-        read_timeout=60.0,
-        write_timeout=60.0,
-        pool_timeout=60.0
-    )
-    
-    app_bot = Application.builder().token(TOKEN).request(request).build()
-    
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(CallbackQueryHandler(button_handler))
-    app_bot.add_handler(MessageHandler(filters.CONTACT, contact_handler))
-    app_bot.add_handler(MessageHandler(
-        filters.Regex(r'^[\d\s\+\-\(\)]+$') & ~filters.COMMAND, 
-        manual_contact_handler
-    ))
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
-    
-    print("=" * 50)
-    print("🤖 Бот 'Шаурма - и точка' запущен!")
-    print("📱 Откройте бота: https://t.me/ShawarmaTochkaBot")
-    print("📋 Админы: " + ", ".join(str(a) for a in ADMIN_IDS))
-    print("⏹️ Для остановки нажмите Ctrl+C")
-    print("=" * 50)
-    
-    app_bot.run_polling()
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    # Запускаем Flask на порту Render
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
