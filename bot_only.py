@@ -244,9 +244,20 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_contact_keyboard()
         )
 
-# ========== ЗАПУСК БОТА В ОТДЕЛЬНОМ ПОТОКЕ ==========
-def run_bot():
-    """Запускает бота в отдельном потоке"""
+# ========== ЗАПУСК FLASK В ОТДЕЛЬНОМ ПОТОКЕ ==========
+def run_flask():
+    """Запускает Flask-сервер в отдельном потоке"""
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
+
+# ========== ЗАПУСК ==========
+if __name__ == '__main__':
+    # Запускаем Flask в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("🌐 Flask запущен в отдельном потоке")
+    
+    # Запускаем бота в главном потоке
     request = HTTPXRequest(
         connect_timeout=60.0,
         read_timeout=60.0,
@@ -273,14 +284,3 @@ def run_bot():
     print("=" * 50)
     
     app_bot.run_polling()
-
-# ========== ЗАПУСК ==========
-if __name__ == '__main__':
-    # Запускаем бота в отдельном потоке
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    logger.info("🤖 Бот запущен в отдельном потоке")
-    
-    # Запускаем Flask (веб-сервер)
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
