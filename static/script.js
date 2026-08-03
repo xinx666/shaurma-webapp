@@ -800,8 +800,8 @@ function sendOrderToBot(orderText) {
         user_id: currentUserId
     });
     
-    // Отправляем заказ на веб-сервер
-    fetch('https://shaurma-webapp.onrender.com/webapp_data', {
+    // Отправляем заказ НА БОТА (shaurma-bott), а не на веб-приложение
+    fetch('https://shaurma-bott.onrender.com/webapp_data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload
