@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
@@ -10,6 +12,17 @@ ADMIN_IDS = [963903929, 1253085905]
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ========== ФАЛЬШИВЫЙ HTTP-СЕРВЕР ДЛЯ RENDER ==========
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "OK", 200
+
+def run_http_server():
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
 # ========== ДАННЫЕ ==========
 CONTACTS = {
@@ -206,6 +219,12 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== ЗАПУСК ==========
 def main():
+    # Запускаем фальшивый HTTP-сервер в отдельном потоке
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
+    logger.info("🌐 Фальшивый HTTP-сервер запущен для Render")
+
+    # Запускаем бота
     request = HTTPXRequest(
         connect_timeout=60.0,
         read_timeout=60.0,
@@ -213,16 +232,16 @@ def main():
         pool_timeout=60.0
     )
     
-    app = Application.builder().token(TOKEN).request(request).build()
+    app_bot = Application.builder().token(TOKEN).request(request).build()
     
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
-    app.add_handler(MessageHandler(
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CallbackQueryHandler(button_handler))
+    app_bot.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app_bot.add_handler(MessageHandler(
         filters.Regex(r'^[\d\s\+\-\(\)]+$') & ~filters.COMMAND, 
         manual_contact_handler
     ))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
     
     print("=" * 50)
     print("🤖 Бот 'Шаурма - и точка' запущен!")
@@ -231,7 +250,7 @@ def main():
     print("⏹️ Для остановки нажмите Ctrl+C")
     print("=" * 50)
     
-    app.run_polling()
+    app_bot.run_polling()
 
 if __name__ == "__main__":
     main()
