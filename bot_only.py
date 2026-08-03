@@ -163,7 +163,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "🥙 Нажмите кнопку ниже, чтобы открыть наше меню!",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🍔 Открыть меню", web_app=web_app={"url": "https://shaurma-webapp.onrender.com/"})],
+                [InlineKeyboardButton("🍔 Открыть меню", web_app={"url": "https://shaurma-webapp.onrender.com/"})],
                 [InlineKeyboardButton("🔙 Назад", callback_data="back")]
             ])
         )
