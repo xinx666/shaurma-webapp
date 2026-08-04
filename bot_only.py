@@ -176,6 +176,40 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    # ===== ОБРАБОТКА ЗАКАЗОВ ИЗ ТЕКСТОВЫХ СООБЩЕНИЙ =====
+    if text and text.startswith("🆕 ЗАКАЗ"):
+        order_text = text.replace("🆕 ЗАКАЗ\n\n", "")
+        # Отправляем подтверждение пользователю
+        await update.message.reply_text(
+            f"✅ Ваш заказ принят!\n\n{order_text}\n\n📍 Самовывоз: ул. Большевистская, 151\n🕐 Мы ждём вас к указанному времени!"
+        )
+        # Отправляем админам
+        user_info = user_contacts.get(user_id, {})
+        phone = user_info.get('phone', 'не указан')
+        name = user_info.get('first_name', 'Клиент')
+        username = user_info.get('username', 'не указан')
+        
+        admin_order_text = (
+            f"🆕 **НОВЫЙ ЗАКАЗ!**\n\n"
+            f"👤 Клиент: {name}\n"
+            f"📱 Телефон: {phone}\n"
+            f"👤 Username: @{username}\n"
+            f"{'-' * 30}\n"
+            f"{order_text}"
+        )
+        
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=admin_order_text,
+                    parse_mode="Markdown"
+                )
+                logger.info(f"Заказ отправлен админу {admin_id}")
+            except Exception as e:
+                logger.error(f"Не удалось отправить заказ админу {admin_id}: {e}")
+        return
+    
     if user_id in user_contacts:
         await update.message.reply_text(
             "😕 Я не понимаю это сообщение.\n\nПожалуйста, воспользуйтесь кнопками:",
