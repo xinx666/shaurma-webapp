@@ -1,9 +1,6 @@
 import logging
 import os
-import json
-import threading
-from flask import Flask, request, jsonify, send_from_directory
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 
@@ -13,60 +10,6 @@ ADMIN_IDS = [963903929, 1253085905]
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# ========== FLASK ==========
-app = Flask(__name__, static_folder='static', static_url_path='')
-
-# ========== ОБРАБОТЧИК WEB APP DATA ==========
-@app.route('/webapp_data', methods=['POST'])
-def handle_webapp_data():
-    try:
-        data = request.get_json()
-        if not data or data.get('type') != 'order':
-            return jsonify({'status': 'error', 'message': 'Invalid data'}), 400
-        
-        order_text = data.get('order', '')
-        user_id = data.get('user_id')
-        
-        logger.info(f"🔥 ПОЛУЧЕН ЗАКАЗ: {order_text}")
-        
-        bot = Bot(token=TOKEN)
-        
-        # Отправляем заказ админам
-        for admin_id in ADMIN_IDS:
-            try:
-                bot.send_message(
-                    chat_id=admin_id,
-                    text=f"🆕 НОВЫЙ ЗАКАЗ!\n\n{order_text}"
-                )
-                logger.info(f"✅ Заказ отправлен админу {admin_id}")
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки админу {admin_id}: {e}")
-        
-        # Подтверждение пользователю
-        if user_id:
-            try:
-                bot.send_message(
-                    chat_id=user_id,
-                    text=f"✅ Ваш заказ принят!\n\n{order_text}"
-                )
-                logger.info(f"✅ Подтверждение отправлено пользователю {user_id}")
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки пользователю: {e}")
-        
-        return jsonify({'status': 'success'}), 200
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-# ========== РАЗДАЧА СТАТИКИ ==========
-@app.route('/')
-def serve_index():
-    return send_from_directory('static', 'index.html')
-
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('static', path)
 
 # ========== ДАННЫЕ ==========
 CONTACTS = {
@@ -244,20 +187,8 @@ async def unknown_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_contact_keyboard()
         )
 
-# ========== ЗАПУСК FLASK В ОТДЕЛЬНОМ ПОТОКЕ ==========
-def run_flask():
-    """Запускает Flask-сервер в отдельном потоке"""
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
-
 # ========== ЗАПУСК ==========
-if __name__ == '__main__':
-    # Запускаем Flask в отдельном потоке
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logger.info("🌐 Flask запущен в отдельном потоке")
-    
-    # Запускаем бота в главном потоке
+def main():
     request = HTTPXRequest(
         connect_timeout=60.0,
         read_timeout=60.0,
@@ -265,16 +196,16 @@ if __name__ == '__main__':
         pool_timeout=60.0
     )
     
-    app_bot = Application.builder().token(TOKEN).request(request).build()
+    app = Application.builder().token(TOKEN).request(request).build()
     
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(CallbackQueryHandler(button_handler))
-    app_bot.add_handler(MessageHandler(filters.CONTACT, contact_handler))
-    app_bot.add_handler(MessageHandler(
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app.add_handler(MessageHandler(
         filters.Regex(r'^[\d\s\+\-\(\)]+$') & ~filters.COMMAND, 
         manual_contact_handler
     ))
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_handler))
     
     print("=" * 50)
     print("🤖 Бот 'Шаурма - и точка' запущен!")
@@ -283,4 +214,7 @@ if __name__ == '__main__':
     print("⏹️ Для остановки нажмите Ctrl+C")
     print("=" * 50)
     
-    app_bot.run_polling()
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
